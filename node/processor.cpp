@@ -4874,11 +4874,41 @@ bool NodeProcessor::ExecInDependentContext(IWorker& wrk, const Merkle::Hash* pCt
 			if (!dcs.Apply(&itCtx->get_ParentObj()))
 				return false;
 
+			BlockInterpretCtx* pBic = &bic;
+			TemporarySwap<BlockInterpretCtx*> ts(m_pDependentBic, pBic);
 			wrk.Do();
 		}
 	}
 
 	return true;
+}
+
+void NodeProcessor::EnumContractVars(const Blob& kMin, const Blob& kMax, bool bSkipMin, IContractVarsWalker& w)
+{
+	if (!m_pDependentBic)
+	{
+		NodeDB::WalkerContractData wlk;
+		m_DB.ContractDataEnum(wlk, kMin, kMax);
+		while (wlk.MoveNext())
+		{
+			if (bSkipMin && (wlk.m_Key == kMin))
+				continue;
+			if (!w.OnVar(wlk.m_Key, wlk.m_Val))
+				break;
+		}
+		return;
+	}
+
+	// the dependent txs' changes live only in the temporary storage, merge it over the DB
+	auto& s = m_pDependentBic->m_Storage;
+	for (auto* pE = s.FindVarEx(kMin, !bSkipMin, true); pE; pE = s.FindVarEx(pE->ToBlob(), false, true))
+	{
+		Blob key = pE->ToBlob();
+		if (kMax < key)
+			break;
+		if (!w.OnVar(key, pE->m_Data))
+			break;
+	}
 }
 
 bool NodeProcessor::BlockInterpretCtx::HandleBlockElement(const Input& v)

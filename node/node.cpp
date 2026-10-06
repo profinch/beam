@@ -4414,46 +4414,39 @@ void Node::Peer::OnMsg(proto::ContractVarsEnum&& msg)
 {
 	struct Wrk
 		:public NodeProcessor::IWorker
+		,public NodeProcessor::IContractVarsWalker
 	{
 		Peer& m_This;
 		proto::ContractVarsEnum& m_In;
 		proto::ContractVars m_Out;
+		Serializer m_Ser;
 
 		Wrk(Peer& x, proto::ContractVarsEnum& msgIn)
 			:m_This(x)
 			,m_In(msgIn)
 		{}
 
+		bool OnVar(const Blob& key, const Blob& val) override
+		{
+			m_Ser
+				& key.n
+				& val.n;
+
+			m_Ser.WriteRaw(key.p, key.n);
+			m_Ser.WriteRaw(val.p, val.n);
+
+			if (m_This.IsChocking(m_Ser.buffer().second))
+			{
+				m_Out.m_bMore = true;
+				return false;
+			}
+			return true;
+		}
+
 		void Do() override
 		{
-			NodeDB::WalkerContractData wlk;
-			m_This.m_This.m_Processor.get_DB().ContractDataEnum(wlk, m_In.m_KeyMin, m_In.m_KeyMax);
-
-			Serializer ser;
-
-			while (true)
-			{
-				if (!wlk.MoveNext())
-					break;
-
-				if (m_In.m_bSkipMin && (wlk.m_Key == m_In.m_KeyMin))
-					continue; // skip
-
-				ser
-					& wlk.m_Key.n
-					& wlk.m_Val.n;
-
-				ser.WriteRaw(wlk.m_Key.p, wlk.m_Key.n);
-				ser.WriteRaw(wlk.m_Val.p, wlk.m_Val.n);
-
-				if (m_This.IsChocking(ser.buffer().second))
-				{
-					m_Out.m_bMore = true;
-					break;
-				}
-			}
-
-			ser.swap_buf(m_Out.m_Result);
+			m_This.m_This.m_Processor.EnumContractVars(m_In.m_KeyMin, m_In.m_KeyMax, m_In.m_bSkipMin, *this);
+			m_Ser.swap_buf(m_Out.m_Result);
 		}
 	};
 
