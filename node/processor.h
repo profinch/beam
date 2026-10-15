@@ -940,6 +940,12 @@ public:
 	// inside ExecInDependentContext this sees the applied dependent txs, not only the DB
 	void EnumContractVars(const Blob& kMin, const Blob& kMax, bool bSkipMin, IContractVarsWalker&);
 
+	struct IContractLogsWalker {
+		virtual bool OnLog(const HeightPos&, const Blob& key, const Blob& val) = 0; // false stops the walk
+	};
+	// empty keys: by position, else by key then position. Inside ExecInDependentContext this includes the dependent txs' logs
+	void EnumContractLogs(const Blob& kMin, const Blob& kMax, HeightPos posMin, HeightPos posMax, IContractLogsWalker&);
+
 	struct EvmAccount
 	{
 #pragma pack (push, 1)
